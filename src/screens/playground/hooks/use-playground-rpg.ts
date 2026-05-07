@@ -81,6 +81,13 @@ function defaultProfile(): PlayerProfile {
     xp: 0,
     titlesUnlocked: [],
     lastZone: 'training',
+    userId: null,
+    username: null,
+    avatarUrl: null,
+    founderRank: null,
+    isFounder: false,
+    founderClaimed: false,
+    claimedRewards: [],
   }
 }
 
@@ -139,7 +146,14 @@ function normalizeState(raw: Partial<PlaygroundRpgState> | null): PlaygroundRpgS
   const profile: PlayerProfile = {
     ...base.playerProfile,
     ...rawProfile,
-    displayName: rawProfile?.displayName ?? '',
+    displayName: rawProfile?.displayName ?? rawProfile?.username ?? '',
+    username: rawProfile?.username ?? null,
+    userId: rawProfile?.userId ?? null,
+    avatarUrl: rawProfile?.avatarUrl ?? null,
+    founderRank: rawProfile?.founderRank ?? null,
+    isFounder: Boolean(rawProfile?.isFounder),
+    founderClaimed: Boolean(rawProfile?.founderClaimed),
+    claimedRewards: Array.from(new Set(rawProfile?.claimedRewards ?? [])),
     avatarConfig: { ...base.playerProfile.avatarConfig, ...(rawProfile?.avatarConfig ?? {}) },
     equipped: { ...EMPTY_EQUIPPED, ...(rawProfile?.equipped ?? {}) },
     inventory: Array.from(new Set(rawProfile?.inventory ?? legacyInventory ?? [])),
@@ -292,12 +306,26 @@ export function usePlaygroundRpg() {
     }, kind === 'title' ? 6500 : 4500)
   }, [])
 
+  const hydrateAuthProfile = useCallback((patch: Partial<PlayerProfile>) => {
+    setState((prev) => ({
+      ...prev,
+      playerProfile: {
+        ...prev.playerProfile,
+        ...patch,
+        displayName: patch.displayName ?? patch.username ?? prev.playerProfile.displayName,
+        claimedRewards: Array.from(new Set(patch.claimedRewards ?? prev.playerProfile.claimedRewards ?? [])),
+        inventory: Array.from(new Set([...(prev.playerProfile.inventory ?? []), ...(patch.inventory ?? [])])),
+      },
+    }))
+  }, [])
+
   const setDisplayName = useCallback((displayName: string) => {
     setState((prev) => ({
       ...prev,
       playerProfile: {
         ...prev.playerProfile,
         displayName,
+        username: displayName.trim() || prev.playerProfile.username || null,
       },
     }))
   }, [])
@@ -359,16 +387,17 @@ export function usePlaygroundRpg() {
       return completeQuestState(next, quest)
     })
     if (completedQuest) {
-      pushToast('quest', 'Quest Complete', completedQuest.title)
-      pushToast('xp', '+ XP', `+${completedQuest.reward.xp} XP`)
-      if (completedQuest.reward.items?.length) {
-        for (const itemId of completedQuest.reward.items) {
+      const questToast = completedQuest as PlaygroundQuest
+      pushToast('quest', 'Quest Complete', questToast.title)
+      pushToast('xp', '+ XP', `+${questToast.reward.xp} XP`)
+      if (questToast.reward.items?.length) {
+        for (const itemId of questToast.reward.items) {
           const item = itemById(itemId)
           if (item) pushToast('item', '+ Item', item.name)
         }
       }
-      if (completedQuest.reward.title) {
-        pushToast('title', 'Title Unlocked', completedQuest.reward.title)
+      if (questToast.reward.title) {
+        pushToast('title', 'Title Unlocked', questToast.reward.title)
       }
     }
   }, [pushToast])
@@ -385,6 +414,25 @@ export function usePlaygroundRpg() {
     for (const itemId of items) {
       const item = itemById(itemId)
       if (item) pushToast('item', '+ Item', item.name)
+    }
+  }, [pushToast])
+
+  const claimFounderRewards = useCallback((rewardIds: PlaygroundItemId[]) => {
+    if (!rewardIds.length) return
+    setState((prev) => ({
+      ...prev,
+      playerProfile: {
+        ...prev.playerProfile,
+        inventory: Array.from(new Set([...prev.playerProfile.inventory, ...rewardIds])),
+        claimedRewards: Array.from(new Set([...(prev.playerProfile.claimedRewards ?? []), ...rewardIds])),
+        founderClaimed: true,
+        titlesUnlocked: Array.from(new Set([...prev.playerProfile.titlesUnlocked, 'Founder'])),
+      },
+    }))
+    pushToast('title', 'Founder Vault Claimed', 'Founder rewards added to your inventory.')
+    for (const itemId of rewardIds) {
+      const item = itemById(itemId)
+      if (item) pushToast('item', '+ Founder Reward', item.name)
     }
   }, [pushToast])
 
@@ -547,6 +595,7 @@ export function usePlaygroundRpg() {
     worlds: PLAYGROUND_WORLDS,
     skills: PLAYGROUND_SKILLS,
     stats,
+    hydrateAuthProfile,
     setDisplayName,
     setAvatarConfig,
     setLastZone,
@@ -556,6 +605,7 @@ export function usePlaygroundRpg() {
     unlockWorld,
     grantItems,
     grantSkillXp,
+    claimFounderRewards,
     openInventory,
     equipItem,
     unequipSlot,

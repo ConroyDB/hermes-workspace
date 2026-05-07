@@ -36,6 +36,13 @@ export type PlaygroundItemId =
   | 'arena-medal'
   | 'song-fragment'
   | 'oracle-riddle'
+  | 'founder-cape'
+  | 'founder-banner'
+  | 'aether-50'
+  | 'coins-1000'
+  | 'trader-trial'
+  | 'founder-title'
+  | 'founder-pet'
 
 export type QuestObjectiveType =
   | 'talk_to_npc'
@@ -120,6 +127,13 @@ export type QuestProgressEntry = {
 }
 
 export type PlayerProfile = {
+  userId?: string | null
+  username?: string | null
+  avatarUrl?: string | null
+  founderRank?: number | null
+  isFounder?: boolean
+  founderClaimed?: boolean
+  claimedRewards?: string[]
   displayName: string
   avatarConfig: AvatarConfig
   equipped: EquippedItems
@@ -353,6 +367,58 @@ export const PLAYGROUND_ITEMS: PlaygroundItem[] = [
     icon: '🏅',
     rarity: 'legendary',
     description: 'Awarded for surviving the Duel of Models in the Benchmark Arena.',
+  },
+  {
+    id: 'founder-cape',
+    name: 'Founder Cape',
+    icon: '🧥',
+    rarity: 'legendary',
+    description: 'Animated gold-trim cloak cosmetic reserved for founders.',
+    slot: 'cloak',
+    accent: '#d9b35f',
+    stat: { label: 'Founder Guard', value: 7 },
+  },
+  {
+    id: 'founder-banner',
+    name: 'Founder Banner',
+    icon: '🏳️',
+    rarity: 'legendary',
+    description: 'Guild banner for founder house halls.',
+  },
+  {
+    id: 'aether-50',
+    name: 'Aether x50',
+    icon: '💠',
+    rarity: 'epic',
+    description: 'Premium crafting currency granted by the Founder Vault.',
+  },
+  {
+    id: 'coins-1000',
+    name: 'Coins x1000',
+    icon: '🪙',
+    rarity: 'epic',
+    description: 'Starter bankroll for shops and trade experiments.',
+  },
+  {
+    id: 'trader-trial',
+    name: 'Trader Agent Trial',
+    icon: '🤖',
+    rarity: 'epic',
+    description: 'Trial access to the Trader Agent.',
+  },
+  {
+    id: 'founder-title',
+    name: 'Founder Title',
+    icon: '👑',
+    rarity: 'legendary',
+    description: 'Permanent account title for launch founders.',
+  },
+  {
+    id: 'founder-pet',
+    name: 'Founder Pet',
+    icon: '🐉',
+    rarity: 'legendary',
+    description: 'Tiny aether wyrm companion.',
   },
 ]
 

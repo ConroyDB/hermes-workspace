@@ -31,12 +31,15 @@ export type RemotePlayer = {
   yaw: number
   lastChat?: string
   lastChatAt?: number
+  userId?: string
+  user_id?: string
+  username?: string
   ts: number
   avatar?: AvatarConfig
 }
 
 type PresenceWire = RemotePlayer & { kind: 'presence' }
-type ChatWire = { kind: 'chat'; id: string; name: string; color: string; world: PlaygroundWorldId; text: string; ts: number }
+type ChatWire = { kind: 'chat'; id: string; name: string; color: string; userId?: string; user_id?: string; username?: string; world: PlaygroundWorldId; text: string; ts: number }
 type LeaveWire = { kind: 'leave'; id: string }
 type CountWire = { kind: 'count'; online: number; byWorld?: Record<string, number>; peakToday?: number; ts: number }
 type Wire = PresenceWire | ChatWire | LeaveWire | CountWire
@@ -98,6 +101,8 @@ export function usePlaygroundMultiplayer({
   positionRef,
   yawRef,
   name,
+  userId,
+  username,
   onChat,
 }: {
   world: PlaygroundWorldId
@@ -105,6 +110,8 @@ export function usePlaygroundMultiplayer({
   positionRef: React.MutableRefObject<{ x: number; y: number; z: number } | null>
   yawRef: React.MutableRefObject<number>
   name?: string
+  userId?: string
+  username?: string
   onChat?: (msg: IncomingChat) => void
 }) {
   const selfId = useMemo(() => getSelfId(), [])
@@ -205,6 +212,9 @@ export function usePlaygroundMultiplayer({
               id: selfId,
               name: myName,
               color: myColor,
+              userId,
+              user_id: userId,
+              username,
               world,
               interior,
               x: pos.x,
@@ -260,7 +270,7 @@ export function usePlaygroundMultiplayer({
       try { ws?.close() } catch {}
       wsRef.current = null
     }
-  }, [selfId, mergePresence])
+  }, [selfId, myName, myColor, userId, username, world, interior, positionRef, yawRef, mergePresence])
 
   // Open BroadcastChannel
   useEffect(() => {
@@ -328,6 +338,9 @@ export function usePlaygroundMultiplayer({
           id: selfId,
           name: myName,
           color: myColor,
+          userId,
+          user_id: userId,
+          username,
           world,
           interior,
           x: pos.x,
@@ -358,7 +371,7 @@ export function usePlaygroundMultiplayer({
       })
     }, PRESENCE_INTERVAL_MS)
     return () => window.clearInterval(tick)
-  }, [selfId, myName, myColor, world, interior, positionRef, yawRef])
+  }, [selfId, myName, myColor, userId, username, world, interior, positionRef, yawRef])
 
   // ───── HTTP polling transport (reliable fallback) ─────
   // WebSockets have too many failure modes (CF DO hibernation, bg-tab
@@ -390,6 +403,9 @@ export function usePlaygroundMultiplayer({
             id: selfId,
             name: myName,
             color: myColor,
+            userId,
+            user_id: userId,
+            username,
             world,
             interior,
             x: pos.x,
@@ -448,7 +464,7 @@ export function usePlaygroundMultiplayer({
       window.removeEventListener('pagehide', onUnload)
       onUnload()
     }
-  }, [selfId, myName, myColor, world, interior, positionRef, yawRef, mergePresence])
+  }, [selfId, myName, myColor, userId, username, world, interior, positionRef, yawRef, mergePresence])
 
   // Also send chats over HTTP so they propagate even when WS is dead.
   // We override sendChat to do both.
@@ -462,9 +478,9 @@ export function usePlaygroundMultiplayer({
     fetch(`${baseUrl}/chat`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ id: selfId, name: myName, color: myColor, world, text: trimmed.slice(0, 240), ts: Date.now() }),
+      body: JSON.stringify({ id: selfId, name: myName, color: myColor, userId, user_id: userId, username, world, text: trimmed.slice(0, 240), ts: Date.now() }),
     }).catch(() => {})
-  }, [selfId, myName, myColor, world])
+  }, [selfId, myName, myColor, userId, username, world])
 
   // Immediately re-send presence when the tab becomes visible (after being
   // backgrounded). Background tabs are throttled by the browser and can stop
@@ -486,6 +502,9 @@ export function usePlaygroundMultiplayer({
             id: selfId,
             name: myName,
             color: myColor,
+            userId,
+            user_id: userId,
+            username,
             world,
             interior,
             x: pos.x,
@@ -506,7 +525,7 @@ export function usePlaygroundMultiplayer({
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('focus', onVisible)
     }
-  }, [selfId, myName, myColor, world, interior, positionRef, yawRef])
+  }, [selfId, myName, myColor, userId, username, world, interior, positionRef, yawRef])
 
   const sendChat = useCallback((text: string) => {
     const trimmed = text.trim()
@@ -516,7 +535,10 @@ export function usePlaygroundMultiplayer({
       id: selfId,
       name: myName,
       color: myColor,
-      world,
+          userId,
+          user_id: userId,
+          username,
+          world,
       text: trimmed.slice(0, 240),
       ts: Date.now(),
     }
@@ -526,7 +548,7 @@ export function usePlaygroundMultiplayer({
       try { wsRef.current.send(JSON.stringify(wire)) } catch {}
     }
     httpSendChat(trimmed) // HTTP polling transport — always works
-  }, [selfId, myName, myColor, world, httpSendChat])
+  }, [selfId, myName, myColor, userId, username, world, httpSendChat])
 
   // World-scoped remote players: never render people from other worlds.
   const visibleRemotes = useMemo(() => {

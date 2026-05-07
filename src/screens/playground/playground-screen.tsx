@@ -5,6 +5,7 @@ import { PlaygroundChat, type ChatMessage } from './components/playground-chat'
 import { PlaygroundCustomizer } from './components/playground-customizer'
 import { PlaygroundDialog } from './components/playground-dialog'
 import { PlaygroundHeroCanvas } from './components/playground-hero-canvas'
+import { FounderVaultPanel } from './components/founder-vault-panel'
 import { PlaygroundHud } from './components/playground-hud'
 import { PlaygroundJournal } from './components/playground-journal'
 import { PlaygroundMap } from './components/playground-map'
@@ -12,6 +13,7 @@ import { PlaygroundMinimap } from './components/playground-minimap'
 import { PlaygroundSidePanel } from './components/playground-sidepanel'
 import { PlaygroundWorld3D } from './components/playground-world-3d'
 import { Toast } from './components/toast'
+import { usePlaygroundAuth, FOUNDER_REWARD_IDS } from './hooks/use-playground-auth'
 import { usePlaygroundRpg } from './hooks/use-playground-rpg'
 import { playgroundAudio, usePlaygroundAudioMuted } from './lib/playground-audio'
 import { autoNarrateWorld, cancelNarration, isNarrationMuted, setNarrationMuted, narrateWorldNow } from './lib/playground-narration'
@@ -59,6 +61,7 @@ class PlaygroundErrorBoundary extends Component<
 
 export function PlaygroundScreen() {
   const rpg = usePlaygroundRpg()
+  const auth = usePlaygroundAuth(rpg.hydrateAuthProfile)
   const audioMuted = usePlaygroundAudioMuted()
   const [launched, setLaunched] = useState(false)
   const [world, setWorld] = useState<PlaygroundWorldId>(rpg.state.playerProfile.lastZone)
@@ -72,6 +75,9 @@ export function PlaygroundScreen() {
   const [mapOpen, setMapOpen] = useState(false)
   const [archiveOpen, setArchiveOpen] = useState(false)
   const [tutorialCompleteOpen, setTutorialCompleteOpen] = useState(false)
+  const [founderVaultOpen, setFounderVaultOpen] = useState(false)
+  const [founderClaiming, setFounderClaiming] = useState(false)
+  const [authNotice, setAuthNotice] = useState<string | null>(null)
   const [forgeIntro, setForgeIntro] = useState<ForgeIntroState>({ open: false, flavor: '', loading: false })
   const [transitioning, setTransitioning] = useState(false)
   const [monsterHp, setMonsterHp] = useState(44)
@@ -118,6 +124,7 @@ export function PlaygroundScreen() {
   const currentObjective = rpg.currentObjective
   const forgeUnlocked = rpg.state.unlockedWorlds.includes('forge')
   const monsterDefeated = rpg.state.completedQuests.includes('training-bonus-wisp')
+  const founderVaultEligible = Boolean(rpg.state.playerProfile.isFounder && !rpg.state.playerProfile.founderClaimed)
   const remotePlayersInZone = useMemo(
     () => Object.values(remotePlayers).filter((player) => player.world === world),
     [remotePlayers, world],
@@ -137,6 +144,10 @@ export function PlaygroundScreen() {
     if (typeof window === 'undefined') return
     forgeIntroSeenRef.current = window.localStorage.getItem(FORGE_INTRO_STORAGE_KEY) === '1'
   }, [])
+
+  useEffect(() => {
+    if (founderVaultEligible) setFounderVaultOpen(true)
+  }, [founderVaultEligible])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -430,6 +441,25 @@ export function PlaygroundScreen() {
     }
   }
 
+  async function handleFounderClaim() {
+    setFounderClaiming(true)
+    try {
+      const result = await auth.claimFounderVault()
+      if (!result.ok) {
+        setAuthNotice(result.error)
+        return
+      }
+      const claimedRewardIds = result.rewardIds ?? []
+      const rewardIds = (claimedRewardIds.length ? claimedRewardIds : FOUNDER_REWARD_IDS)
+        .filter((id): id is (typeof FOUNDER_REWARD_IDS)[number] => FOUNDER_REWARD_IDS.includes(id as (typeof FOUNDER_REWARD_IDS)[number]))
+      rpg.claimFounderRewards(rewardIds)
+      setFounderVaultOpen(false)
+      setAuthNotice('Founder Vault claimed. Rewards are now in your inventory.')
+    } finally {
+      setFounderClaiming(false)
+    }
+  }
+
   function handlePortal() {
     if (world === 'training' && !forgeUnlocked) return
     if (world === 'training') {
@@ -509,9 +539,23 @@ export function PlaygroundScreen() {
         <TitleScreen
           displayName={rpg.state.playerProfile.displayName}
           tutorialComplete={rpg.state.completedQuests.includes('training-q5')}
+          authStatus={auth.status}
+          authError={auth.error ?? authNotice}
+          signedIn={auth.status === 'signed-in'}
+          requiresUsername={auth.status === 'signed-in' && !rpg.state.playerProfile.username}
           onChangeDisplayName={rpg.setDisplayName}
           onCustomize={() => setCustomizerOpen(true)}
-          onEnter={() => setLaunched(true)}
+          onSignIn={auth.signIn}
+          onEnter={async () => {
+            const result = await auth.syncUsername(rpg.state.playerProfile.displayName)
+            if (!result.ok) {
+              setAuthNotice(result.error)
+              if (result.error.includes('already claimed')) return
+            } else {
+              setAuthNotice(null)
+            }
+            setLaunched(true)
+          }}
         />
         <PlaygroundCustomizer
           open={customizerOpen}
@@ -541,7 +585,9 @@ export function PlaygroundScreen() {
           playerHelmet={equippedVisuals.helmet}
           portalLabel={world === 'training' ? 'Forge Gate' : 'World Portal'}
           portalLocked={world === 'training' && !forgeUnlocked}
-          multiplayerName={rpg.state.playerProfile.displayName || undefined}
+          multiplayerName={rpg.state.playerProfile.displayName || rpg.state.playerProfile.username || undefined}
+          multiplayerUserId={rpg.state.playerProfile.userId ?? undefined}
+          multiplayerUsername={rpg.state.playerProfile.username ?? undefined}
           monsterHp={monsterHp}
           monsterHpMax={monsterHpMax}
           monsterDefeated={monsterDefeated}
@@ -691,6 +737,8 @@ export function PlaygroundScreen() {
         {adminMode ? <PlaygroundAdminPanel /> : null}
         <PlaygroundUtilityDock
           audioMuted={audioMuted}
+          signedIn={auth.status === 'signed-in'}
+          onSignIn={auth.signIn}
           narrationMuted={narrationMuted}
           onCustomize={() => setCustomizerOpen(true)}
           onToggleAudio={() => playgroundAudio.toggleMuted()}
@@ -721,6 +769,15 @@ export function PlaygroundScreen() {
             setWorld('training')
           }}
         />
+        <FounderVaultModal
+          open={founderVaultOpen}
+          eligible={founderVaultEligible}
+          claimedRewardIds={rpg.state.playerProfile.claimedRewards ?? []}
+          claiming={founderClaiming}
+          error={authNotice}
+          onClose={() => setFounderVaultOpen(false)}
+          onClaim={() => void handleFounderClaim()}
+        />
         <ForgeArrivalOverlay open={forgeIntro.open} flavor={forgeIntro.flavor} loading={forgeIntro.loading} />
         <LowHpOverlay active={lowHpActive} />
         <CameraPresetToast />
@@ -733,16 +790,27 @@ export function PlaygroundScreen() {
 function TitleScreen({
   displayName,
   tutorialComplete,
+  authStatus,
+  authError,
+  signedIn,
+  requiresUsername,
   onChangeDisplayName,
   onCustomize,
+  onSignIn,
   onEnter,
 }: {
   displayName: string
   tutorialComplete: boolean
+  authStatus: 'guest' | 'loading' | 'signed-in' | 'error'
+  authError: string | null
+  signedIn: boolean
+  requiresUsername: boolean
   onChangeDisplayName: (value: string) => void
   onCustomize: () => void
-  onEnter: () => void
+  onSignIn: () => void
+  onEnter: () => Promise<void>
 }) {
+  const [entering, setEntering] = useState(false)
   const canEnter = displayName.trim().length > 0
 
   useEffect(() => {
@@ -847,6 +915,17 @@ function TitleScreen({
               >
                 ❖ Identify Yourself
               </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-white/58">
+                <span className="rounded-full border border-white/10 bg-black/30 px-2.5 py-1 uppercase tracking-[0.12em]">
+                  {signedIn ? 'Signed in' : authStatus === 'loading' ? 'Checking account…' : 'Guest mode'}
+                </span>
+                {!signedIn ? (
+                  <button type="button" onClick={onSignIn} className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-2.5 py-1 font-bold text-cyan-100 hover:bg-cyan-300/18">
+                    Sign in for Founder Vault
+                  </button>
+                ) : null}
+                {requiresUsername ? <span className="text-amber-100/80">Pick a unique builder name to sync your account.</span> : null}
+              </div>
               <input
                 value={displayName}
                 onChange={(event) => onChangeDisplayName(event.target.value.slice(0, 24))}
@@ -870,8 +949,15 @@ function TitleScreen({
                 </button>
                 <button
                   type="button"
-                  onClick={onEnter}
-                  disabled={!canEnter}
+                  onClick={async () => {
+                    setEntering(true)
+                    try {
+                      await onEnter()
+                    } finally {
+                      setEntering(false)
+                    }
+                  }}
+                  disabled={!canEnter || entering}
                   className="flex-1 rounded-xl border-2 px-6 py-3 text-base font-extrabold uppercase tracking-[0.18em] transition-all hover:scale-[1.02] disabled:opacity-40 disabled:hover:scale-100"
                   style={{
                     borderColor: '#facc15',
@@ -882,9 +968,14 @@ function TitleScreen({
                       : 'none',
                   }}
                 >
-                  Enter the Realm
+                  {entering ? 'Syncing…' : 'Enter the Realm'}
                 </button>
               </div>
+              {authError ? (
+                <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/8 px-3 py-2 text-xs text-amber-100/85">
+                  {authError}
+                </p>
+              ) : null}
             </div>
             <div className="grid gap-2 text-[12px] sm:grid-cols-3">
               <PremiumFeatureCard icon="❁" title="Six Worlds" desc="Training Grounds → Forge → Arena" />
@@ -1150,6 +1241,51 @@ function CameraPresetToast() {
   )
 }
 
+function FounderVaultModal({
+  open,
+  eligible,
+  claimedRewardIds,
+  claiming,
+  error,
+  onClose,
+  onClaim,
+}: {
+  open: boolean
+  eligible: boolean
+  claimedRewardIds: string[]
+  claiming: boolean
+  error: string | null
+  onClose: () => void
+  onClaim: () => void
+}) {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-[92] flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
+      <div className="relative">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-4 top-4 z-10 rounded-full border border-white/12 bg-black/45 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-white/75 hover:bg-white/10"
+        >
+          Close
+        </button>
+        <FounderVaultPanel eligible={eligible && !claiming} claimedRewardIds={claimedRewardIds} onClaim={onClaim} />
+        {claiming ? (
+          <div className="absolute inset-x-6 bottom-6 rounded-2xl border border-amber-300/20 bg-black/75 px-4 py-3 text-sm font-bold text-amber-100">
+            Claiming Founder Vault…
+          </div>
+        ) : null}
+        {error ? (
+          <div className="mt-3 rounded-2xl border border-amber-300/20 bg-black/70 px-4 py-3 text-sm text-amber-100">
+            {error}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+
 const HERMES_LORE_LINES = [
   'Hermes carried prompts between the gods of Olympus and the builders of Earth.',
   'A Hermes Agent is just a fast, faithful messenger — with memory.',
@@ -1249,6 +1385,8 @@ function PlaygroundHelpHud({ worldName }: { worldName: string }) {
 
 function PlaygroundUtilityDock({
   audioMuted,
+  signedIn,
+  onSignIn,
   onCustomize,
   onToggleAudio,
   onReplayNarration,
@@ -1256,6 +1394,8 @@ function PlaygroundUtilityDock({
   narrationMuted,
 }: {
   audioMuted: boolean
+  signedIn: boolean
+  onSignIn: () => void
   onCustomize: () => void
   onToggleAudio: () => void
   onReplayNarration: () => void
@@ -1297,6 +1437,15 @@ function PlaygroundUtilityDock({
   }
   return (
     <div className="pointer-events-auto fixed bottom-[78px] right-3 z-[70] flex flex-col gap-1.5">
+      {!signedIn ? (
+        <button
+          onClick={onSignIn}
+          className="flex h-10 w-10 items-center justify-center rounded-xl border border-amber-300/25 bg-black/65 text-base text-amber-100 backdrop-blur-xl hover:bg-amber-300/15"
+          title="Sign in for account sync and Founder Vault"
+        >
+          🔐
+        </button>
+      ) : null}
       <button
         onClick={captureScreenshot}
         className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/15 bg-black/65 text-base text-cyan-100 backdrop-blur-xl hover:bg-cyan-400/20"

@@ -32,6 +32,8 @@ type AnalyticsEvent = {
   id: string
   name?: string
   color?: string
+  user_id?: string
+  username?: string
   world?: string
   text?: string
   ts: number
@@ -41,6 +43,8 @@ type PlayerDailySummary = {
   id: string
   name?: string
   color?: string
+  user_id?: string
+  username?: string
   firstSeen: number
   lastSeen: number
   lastWorld?: string
@@ -54,6 +58,9 @@ interface PresenceMsg {
   id: string
   worldId?: string
   world?: string
+  userId?: string
+  user_id?: string
+  username?: string
   x?: number
   y?: number
   z?: number
@@ -182,7 +189,7 @@ export class PlaygroundHubV2 {
 
   notePlayer(
     id: string,
-    patch: Partial<PlayerDailySummary> & { name?: string; color?: string; lastWorld?: string },
+    patch: Partial<PlayerDailySummary> & { name?: string; color?: string; user_id?: string; username?: string; lastWorld?: string },
     ts = Date.now(),
   ) {
     this.ensureAnalyticsDay(ts)
@@ -193,6 +200,8 @@ export class PlaygroundHubV2 {
           ...patch,
           name: patch.name ?? current.name,
           color: patch.color ?? current.color,
+          user_id: patch.user_id ?? current.user_id,
+          username: patch.username ?? current.username,
           lastSeen: ts,
           lastWorld: patch.lastWorld ?? current.lastWorld,
           lastChatAt: patch.lastChatAt ?? current.lastChatAt,
@@ -203,6 +212,8 @@ export class PlaygroundHubV2 {
           id,
           name: patch.name,
           color: patch.color,
+          user_id: patch.user_id,
+          username: patch.username,
           firstSeen: ts,
           lastSeen: ts,
           lastWorld: patch.lastWorld,
@@ -433,6 +444,8 @@ export class PlaygroundHubV2 {
       this.notePlayer(body.id, {
         name: typeof body.name === 'string' ? body.name : undefined,
         color: typeof body.color === 'string' ? body.color : undefined,
+        user_id: typeof body.user_id === 'string' ? body.user_id : typeof body.userId === 'string' ? body.userId : undefined,
+        username: typeof body.username === 'string' ? body.username : undefined,
         lastWorld: world,
         joins: wasNew ? (this.playerDaily.get(body.id)?.joins || 0) + 1 : (this.playerDaily.get(body.id)?.joins || 0),
       }, now)
@@ -443,6 +456,8 @@ export class PlaygroundHubV2 {
           id: body.id,
           name: typeof body.name === 'string' ? body.name : undefined,
           color: typeof body.color === 'string' ? body.color : undefined,
+          user_id: typeof body.user_id === 'string' ? body.user_id : typeof body.userId === 'string' ? body.userId : undefined,
+          username: typeof body.username === 'string' ? body.username : undefined,
           world,
           ts: now,
         })
@@ -454,6 +469,8 @@ export class PlaygroundHubV2 {
           id: body.id,
           name: typeof body.name === 'string' ? body.name : undefined,
           color: typeof body.color === 'string' ? body.color : undefined,
+          user_id: typeof body.user_id === 'string' ? body.user_id : typeof body.userId === 'string' ? body.userId : undefined,
+          username: typeof body.username === 'string' ? body.username : undefined,
           world,
           ts: now,
         })
@@ -505,6 +522,8 @@ export class PlaygroundHubV2 {
       this.notePlayer(body.id, {
         name: typeof body.name === 'string' ? body.name : undefined,
         color: typeof body.color === 'string' ? body.color : undefined,
+        user_id: typeof body.user_id === 'string' ? body.user_id : typeof body.userId === 'string' ? body.userId : undefined,
+        username: typeof body.username === 'string' ? body.username : undefined,
         lastWorld: (body.world || body.worldId) as string | undefined,
         lastChatAt: body.ts,
         chats: (this.playerDaily.get(body.id)?.chats || 0) + 1,
@@ -514,6 +533,8 @@ export class PlaygroundHubV2 {
         id: body.id,
         name: typeof body.name === 'string' ? body.name : undefined,
         color: typeof body.color === 'string' ? body.color : undefined,
+        user_id: typeof body.user_id === 'string' ? body.user_id : typeof body.userId === 'string' ? body.userId : undefined,
+        username: typeof body.username === 'string' ? body.username : undefined,
         world: (body.world || body.worldId) as string | undefined,
         text: typeof body.text === 'string' ? body.text.slice(0, 160) : undefined,
         ts: body.ts,
@@ -622,6 +643,8 @@ export class PlaygroundHubV2 {
       this.notePlayer(msg.id, {
         name: typeof msg.name === 'string' ? msg.name : undefined,
         color: typeof msg.color === 'string' ? msg.color : undefined,
+        user_id: typeof msg.user_id === 'string' ? msg.user_id : typeof msg.userId === 'string' ? msg.userId : undefined,
+        username: typeof msg.username === 'string' ? msg.username : undefined,
         lastWorld: world,
         joins: wasNew ? (this.playerDaily.get(msg.id)?.joins || 0) + 1 : (this.playerDaily.get(msg.id)?.joins || 0),
       }, now)
@@ -648,6 +671,8 @@ export class PlaygroundHubV2 {
       this.notePlayer(msg.id, {
         name: typeof msg.name === 'string' ? msg.name : undefined,
         color: typeof msg.color === 'string' ? msg.color : undefined,
+        user_id: typeof msg.user_id === 'string' ? msg.user_id : typeof msg.userId === 'string' ? msg.userId : undefined,
+        username: typeof msg.username === 'string' ? msg.username : undefined,
         lastWorld: (msg.world || msg.worldId) as string | undefined,
         lastChatAt: typeof msg.ts === 'number' ? msg.ts : Date.now(),
         chats: (this.playerDaily.get(msg.id)?.chats || 0) + 1,
@@ -657,6 +682,8 @@ export class PlaygroundHubV2 {
         id: msg.id,
         name: typeof msg.name === 'string' ? msg.name : undefined,
         color: typeof msg.color === 'string' ? msg.color : undefined,
+        user_id: typeof msg.user_id === 'string' ? msg.user_id : typeof msg.userId === 'string' ? msg.userId : undefined,
+        username: typeof msg.username === 'string' ? msg.username : undefined,
         world: (msg.world || msg.worldId) as string | undefined,
         text: typeof msg.text === 'string' ? msg.text.slice(0, 160) : undefined,
         ts: typeof msg.ts === 'number' ? msg.ts : Date.now(),

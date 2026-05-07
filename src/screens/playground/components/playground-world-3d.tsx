@@ -3015,6 +3015,8 @@ export function PlaygroundWorld3D({
   monsterDefeated,
   onMonsterAttack,
   multiplayerName,
+  multiplayerUserId,
+  multiplayerUsername,
   onIncomingChat,
   onRemotePlayersChange,
   objectiveTargetId,
@@ -3039,6 +3041,8 @@ export function PlaygroundWorld3D({
   monsterDefeated: boolean
   onMonsterAttack: () => void
   multiplayerName?: string
+  multiplayerUserId?: string
+  multiplayerUsername?: string
   onIncomingChat?: (msg: IncomingChat) => void
   onRemotePlayersChange?: (players: Record<string, MpRemotePlayer>) => void
   objectiveTargetId?: string | null
@@ -3065,6 +3069,8 @@ export function PlaygroundWorld3D({
     positionRef: positionForMp,
     yawRef: playerYaw,
     name: multiplayerName,
+    userId: multiplayerUserId,
+    username: multiplayerUsername,
     onChat: onIncomingChat,
   })
   // Expose sendChat + multiplayer info globally so HUD/chat panel can read it.
