@@ -27,6 +27,16 @@ type ConductorMissionRecord = {
   session_id?: string | null
   lines?: unknown
   exit_code?: number | null
+  // Native-swarm fields returned by the conductor-spawn GET handler
+  nativeSwarm?: boolean
+  updatedAt?: number
+  assignments?: Array<{
+    id?: string
+    workerId: string
+    task?: string
+    state?: string
+    checkpoint?: { stateLabel?: string; result?: string; nextAction?: string } | null
+  }>
 }
 
 type ConductorMissionResponse = {
@@ -97,6 +107,7 @@ type ConductorSpawnResponse = {
   jobId?: string | null
   jobName?: string | null
   runId?: string | null
+  assignments?: Array<{ workerId: string; task: string; rationale: string }>
   error?: string
 }
 
@@ -1011,9 +1022,56 @@ export function useConductorGateway() {
     },
     enabled: Boolean(missionId) && phase !== 'idle',
     refetchInterval: phase === 'decomposing' || phase === 'running' ? 2_500 : false,
+    retry: Infinity,
+    retryDelay: (attemptIndex: number) => Math.min(2000 * 2 ** attemptIndex, 10_000),
   })
 
-  const workers = sessionsQuery.data ?? []
+  const sessionWorkers = sessionsQuery.data ?? []
+
+  // For native-swarm missions, build virtual worker cards from the mission
+  // assignments so the UI shows progress instead of "Spawning workers..." forever.
+  const swarmAssignments = missionStatusQuery.data?.assignments
+  const isNativeSwarm = missionStatusQuery.data?.nativeSwarm === true
+  const virtualWorkers = useMemo<ConductorWorker[]>(() => {
+    if (!isNativeSwarm || !swarmAssignments || swarmAssignments.length === 0) return []
+    const missionUpdatedAt = new Date(missionStatusQuery.data?.updatedAt ?? Date.now()).toISOString()
+    return swarmAssignments.map((assignment, index) => {
+      const workerId = assignment.workerId
+      const state = assignment.state ?? 'dispatched'
+      const checkpoint = assignment.checkpoint
+      const isComplete = state === 'checkpointed' || state === 'done' || state === 'cancelled'
+      const isBlocked = state === 'blocked' || state === 'needs_input'
+      const personaNames = ['Nova', 'Pixel', 'Blaze', 'Echo', 'Sage', 'Drift', 'Flux', 'Volt']
+      const persona = personaNames[index % personaNames.length]
+      return {
+        key: workerId,
+        label: workerId,
+        model: 'native-swarm',
+        status: isComplete ? 'complete' : isBlocked ? 'stale' : 'running',
+        updatedAt: missionUpdatedAt,
+        displayName: `${persona} · ${state}`,
+        totalTokens: 0,
+        contextTokens: 0,
+        tokenUsageLabel: state,
+        raw: {
+          key: workerId,
+          label: workerId,
+          friendlyId: workerId,
+          status: isComplete ? 'completed' : 'running',
+          model: 'native-swarm',
+          lastMessage: null,
+          createdAt: missionStatusQuery.data?.updatedAt ?? Date.now(),
+          startedAt: missionStatusQuery.data?.updatedAt ?? Date.now(),
+          updatedAt: Date.now(),
+        } as GatewaySession,
+      }
+    })
+  }, [isNativeSwarm, swarmAssignments])
+
+  const workers = useMemo(() => {
+    if (sessionWorkers.length > 0) return sessionWorkers
+    return virtualWorkers
+  }, [sessionWorkers, virtualWorkers])
   const activeWorkers = useMemo(() => workers.filter((worker) => worker.status === 'running' || worker.status === 'idle'), [workers])
   const hasPersistedMission = initialMission !== null
 
@@ -1534,6 +1592,27 @@ export function useConductorGateway() {
         return
       }
 
+      // native-swarm mode: local swarm workers handle the mission, no orchestrator session
+      if (result.mode === 'native-swarm') {
+        const missionId = result.missionId ?? null
+        setMissionId(missionId)
+        setMissionJobId(result.jobId ?? null)
+        setOrchestratorSessionKey(missionId)
+        if (missionId) {
+          setMissionWorkerKeys((current) => {
+            if (current.has(missionId)) return current
+            const next = new Set(current)
+            next.add(missionId)
+            return next
+          })
+        }
+        setPlanText(result.assignments?.length
+          ? `Native swarm mission launched with ${result.assignments.length} workers. Watching for swarm activity...`
+          : 'Native swarm mission launched. Decomposing and spawning workers...')
+        setPhase('running')
+        return
+      }
+
       if (!result.sessionKey && !result.sessionKeyPrefix && !result.missionId && !result.jobId) {
         throw new Error(result.error ?? 'Failed to spawn orchestrator')
       }
@@ -1554,7 +1633,7 @@ export function useConductorGateway() {
         })
       }
 
-      if (prefix && orchestratorKey) {
+      if (prefix) {
         // Async: resolve the placeholder to the real session key once it exists.
         const resolveOrchestrator = async () => {
           for (let attempt = 0; attempt < 30; attempt += 1) {
