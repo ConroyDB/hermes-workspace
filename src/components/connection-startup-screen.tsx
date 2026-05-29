@@ -121,9 +121,12 @@ export function ConnectionStartupScreen({ onConnected }: Props) {
         // silent: manual auto-start button stays available
       }
     }
-    autoStartTimer = setTimeout(() => {
-      void fireSilentAutoStart()
-    }, AUTO_START_DELAY_MS)
+    // DISABLED BY POLICY (Sovereign OS, 2026-05-28): the silent auto-start
+    // fired the destructive online installer on any connection blip. Gateways
+    // run under launchd and auto-start on boot, so this is never needed.
+    // (References kept to satisfy lint; intentionally never invoked.)
+    void fireSilentAutoStart
+    void AUTO_START_DELAY_MS
 
     const tryConnect = async () => {
       try {

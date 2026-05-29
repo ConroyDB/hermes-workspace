@@ -43,6 +43,24 @@ function broadcastUpdateState() {
 }
 
 function configureAutoUpdater() {
+  // DISABLED BY POLICY (Sovereign OS, 2026-05-28): no auto-update of the app.
+  // Updates are deliberate/manual only (rebuild from source). Short-circuit so
+  // the updater never checks, downloads, or installs-on-quit.
+  updateState = {
+    ...updateState,
+    checking: false,
+    available: false,
+    downloaded: false,
+    error: 'auto-update disabled by policy (manual updates only)',
+  }
+  if (autoUpdater) {
+    autoUpdater.autoDownload = false
+    autoUpdater.autoInstallOnAppQuit = false
+  }
+  broadcastUpdateState()
+  return
+
+  // eslint-disable-next-line no-unreachable
   if (!autoUpdater) {
     updateState = {
       ...updateState,
@@ -199,19 +217,14 @@ function spawnDetached(command) {
 }
 
 async function installHermesInBackground() {
-  if (installProcess) {
-    return { started: false, reason: 'already-running' }
-  }
-  installProcess = spawn('bash', ['-lc', HERMES_INSTALL_SCRIPT], {
-    detached: false,
-    stdio: 'ignore',
-    env: { ...process.env },
-  })
-  installProcess.on('exit', () => {
-    installProcess = null
-    void ensureHermesBackend()
-  })
-  return { started: true }
+  // DISABLED BY POLICY (Sovereign OS, 2026-05-28): this ran the destructive
+  // online installer (`curl .../install.sh | bash`), which on 2026-05-28
+  // pulled latest main, rebuilt the venv without messaging extras, and broke
+  // the entire swarm. Hermes is installed under ~/.hermes and its gateways run
+  // under launchd (auto-start on boot). The workspace must NEVER (re)install.
+  // No-op. HERMES_INSTALL_SCRIPT is intentionally left unused.
+  void HERMES_INSTALL_SCRIPT
+  return { started: false, reason: 'auto-install disabled by policy' }
 }
 
 async function ensureHermesBackend() {
